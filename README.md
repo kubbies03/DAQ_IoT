@@ -133,5 +133,3 @@
   * Receive sensor_status messages
   * Parse payload into temperature/humidity
   * Display values via UART logs
-
-If you want, I can generate a **full polished GitHub README** in Markdown with formatting, images, and a table of contents.
