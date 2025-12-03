@@ -1,56 +1,37 @@
 #ifndef _CUSTOM_ADV_H_
 #define _CUSTOM_ADV_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "sl_bt_api.h"
-#include "app_assert.h"
 
 #define NAME_MAX_LENGTH 14
 
- //define for packet
-#define FLAG  0x06
-#define COMPANY_ID  0x02FF
-
 typedef struct
 {
-  //3 bytes for Flag type
-  uint8_t len_flags;
-  uint8_t type_flags;
-  uint8_t val_flags;
+  uint8_t flags_len;
+  uint8_t flags_type;
+  uint8_t flags_val;
 
-  //Then use type for Manufacturer Specific Data
-  uint8_t len_manuf;
-  uint8_t type_manuf;
-  // First two bytes must contain the manufacturer ID (little-endian order)
-  uint8_t company_LO;
-  uint8_t company_HI;
+  uint8_t name_len;
+  uint8_t name_type;
+  char    name[NAME_MAX_LENGTH];
 
-  //Data for Manufacturer specific data
-  uint8_t student_id_0;
-  uint8_t student_id_1;
-  uint8_t student_id_2;
-  uint8_t student_id_3;
+  uint8_t svc_len;
+  uint8_t svc_type;
+  uint8_t svc_uuid_lo;
+  uint8_t svc_uuid_hi;
 
-  // length of the name AD element is variable, adding it last to keep things simple
-  uint8_t len_name;
-  uint8_t type_name;
+  uint16_t temp_x10;
+  uint16_t hum_x10;
 
-  // NAME_MAX_LENGTH must be sized so that total length of data does not exceed 31 bytes
-  char name[NAME_MAX_LENGTH];
+  uint8_t total_size;
 
-  // These values are NOT included in the actual advertising payload, just for bookkeeping
-  char dummy;        // Space for null terminator
-  uint8_t data_size; // Actual length of advertising data
-} CustomAdv_t;
+} AdvPacket_t;
 
-void fill_adv_packet(CustomAdv_t *pData, uint8_t flags, uint16_t companyID, uint32_t student_id,char *name);
-void start_adv(CustomAdv_t *pData, uint8_t advertising_set_handle);
-void update_adv_data(CustomAdv_t *pData, uint8_t advertising_set_handle, uint32_t student_id);
-#ifdef __cplusplus
-}
-#endif
+void adv_build(AdvPacket_t *p, const char *name,
+               uint16_t temp_x10, uint16_t hum_x10);
+
+void adv_start(uint8_t adv_handle, AdvPacket_t *p);
+void adv_update(uint8_t adv_handle, AdvPacket_t *p,
+                uint16_t temp_x10, uint16_t hum_x10);
 
 #endif

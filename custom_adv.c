@@ -1,93 +1,75 @@
-/***************************************************************************//**
- * @file custom_adv.c
- * @brief customize advertising
- *******************************************************************************
- * # License
- * <b>Copyright 2020 Silicon Laboratories Inc. www.silabs.com</b>
- *******************************************************************************
- *
- * The licensor of this software is Silicon Laboratories Inc. Your use of this
- * software is governed by the terms of Silicon Labs Master Software License
- * Agreement (MSLA) available at
- * www.silabs.com/about-us/legal/master-software-license-agreement. This
- * software is distributed to you in Source Code format and is governed by the
- * sections of the MSLA applicable to Source Code.
- *
- ******************************************************************************/
-
-#include <string.h>
 #include "custom_adv.h"
-#include "stdio.h"
+#include <string.h>
+#include <stdio.h>
 
-void fill_adv_packet(CustomAdv_t *pData, uint8_t flags, uint16_t companyID, uint32_t student_id, char *name)
+void adv_build(AdvPacket_t *p, const char *name,
+               uint16_t temp_x10, uint16_t hum_x10)
 {
-  int n;
+  // FLAGS (0x01 → general discoverable)
+  p->flags_len  = 0x02;
+  p->flags_type = 0x01;
+  p->flags_val  = 0x06;
 
-  pData->len_flags = 0x02;
-  pData->type_flags = 0x01;
-  pData->val_flags = flags;
+  // NAME
+  int n = strlen(name);
+  if (n > NAME_MAX_LENGTH) n = NAME_MAX_LENGTH;
+  memcpy(p->name, name, n);
+  p->name_len  = n + 1;
+  p->name_type = 0x09; // Complete Local Name
 
-  pData->len_manuf = 7;  // 1+2+4 bytes for type, company ID and the payload
-  pData->type_manuf = 0xFF;
-  pData->company_LO = companyID & 0xFF;
-  pData->company_HI = (companyID >> 8) & 0xFF;
+  // SERVICE DATA - UUID 0x181A (Environmental Sensing)
+  p->svc_len      = 1 + 2 + 4;  // type + UUID(2B) + payload(4B)
+  p->svc_type     = 0x16;       // Service Data
+  p->svc_uuid_lo  = 0x1A;
+  p->svc_uuid_hi  = 0x18;
 
-  pData->student_id_3 = student_id & 0xFF;
-  pData->student_id_2 = (student_id >> 8) & 0xFF;
-  pData->student_id_1 = (student_id >> 16) & 0xFF;
-  pData->student_id_0 = (student_id >> 24) & 0xFF;
+  p->temp_x10 = temp_x10;
+  p->hum_x10  = hum_x10;
 
-  // Name length, excluding null terminator
-  n = strlen(name);
-  if (n > NAME_MAX_LENGTH) {
-    // Incomplete name
-    pData->type_name = 0x08;
-  } else {
-    pData->type_name = 0x09;
-  }
-
-  strncpy(pData->name, name, NAME_MAX_LENGTH);
-
-  if (n > NAME_MAX_LENGTH) {
-    n = NAME_MAX_LENGTH;
-  }
-
-  pData->len_name = 1 + n; // length of name element is the name string length + 1 for the AD type
-
-  // Calculate total length of advertising data
-  pData->data_size = 3 + (1 + pData->len_manuf) + (1 + pData->len_name);
+  p->total_size = 3 + (1+p->name_len) + (1+p->svc_len);
 }
 
-void start_adv(CustomAdv_t *pData, uint8_t advertising_set_handle)
+void adv_pack(uint8_t *buf, AdvPacket_t *p, uint16_t temp_x10, uint16_t hum_x10)
 {
-  sl_status_t sc;
-  // Set custom advertising payload 
-  sc = sl_bt_legacy_advertiser_set_data(advertising_set_handle, 0, pData->data_size, (const uint8_t *)pData);
-  app_assert(sc == SL_STATUS_OK,
-                "[E: 0x%04x] Failed to set advertising data\n",
-                (int)sc);
+  uint8_t idx = 0;
 
-  // Start advertising using custom data 
-  sc = sl_bt_legacy_advertiser_start(advertising_set_handle, sl_bt_legacy_advertiser_connectable);
-  app_assert(sc == SL_STATUS_OK,
-                  "[E: 0x%04x] Failed to start advertising\n",
-                  (int)sc);
+  buf[idx++] = p->flags_len;
+  buf[idx++] = p->flags_type;
+  buf[idx++] = p->flags_val;
+
+  buf[idx++] = p->name_len;
+  buf[idx++] = p->name_type;
+  memcpy(&buf[idx], p->name, p->name_len - 1);
+  idx += p->name_len - 1;
+
+  buf[idx++] = p->svc_len;
+  buf[idx++] = p->svc_type;
+  buf[idx++] = p->svc_uuid_lo;
+  buf[idx++] = p->svc_uuid_hi;
+
+  buf[idx++] = temp_x10 & 0xFF;
+  buf[idx++] = temp_x10 >> 8;
+  buf[idx++] = hum_x10 & 0xFF;
+  buf[idx++] = hum_x10 >> 8;
+
+  p->total_size = idx;
 }
 
-
-
-void update_adv_data(CustomAdv_t *pData, uint8_t advertising_set_handle, uint32_t student_id)
+void adv_start(uint8_t adv_handle, AdvPacket_t *p)
 {
-  sl_status_t sc;
-  // Update the variable fields in the custom advertising packet
-  pData->student_id_3 = student_id & 0xFF;
-  pData->student_id_2 = (student_id >> 8) & 0xFF;
-  pData->student_id_1 = (student_id >> 16) & 0xFF;
-  pData->student_id_0 = (student_id >> 24) & 0xFF;
+  uint8_t buf[31];
+  adv_pack(buf, p, p->temp_x10, p->hum_x10);
 
-  // Set custom advertising payload 
-  sc = sl_bt_legacy_advertiser_set_data(advertising_set_handle, 0, pData->data_size, (const uint8_t *)pData);
-  app_assert(sc == SL_STATUS_OK,
-                  "[E: 0x%04x] Failed to set advertising data\n",
-                  (int)sc);
+  sl_bt_legacy_advertiser_set_data(adv_handle, 0, p->total_size, buf);
+  sl_bt_legacy_advertiser_start(adv_handle,
+      sl_bt_advertiser_connectable_scannable);
+}
+
+void adv_update(uint8_t adv_handle, AdvPacket_t *p,
+                uint16_t temp_x10, uint16_t hum_x10)
+{
+  uint8_t buf[31];
+  adv_pack(buf, p, temp_x10, hum_x10);
+
+  sl_bt_legacy_advertiser_set_data(adv_handle, 0, p->total_size, buf);
 }
